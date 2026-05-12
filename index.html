@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <title>Cruzada Mecánica VR</title>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
+    <style>
+        body { margin: 0; overflow: hidden; background: #000; font-family: Arial, sans-serif; }
+        canvas { display: block; }
+
+        #portada {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: linear-gradient(rgba(0,0,0,0.85), rgba(0,0,0,0.9)), url('https://via.placeholder.com/1920x1080/1a1a2e/ffffff?text=CRUZADA+ MECANICA') center/cover;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            color: white;
+            z-index: 200;
+            text-align: center;
+        }
+        #portada h1 {
+            font-size: 4.5rem;
+            margin: 0;
+            text-shadow: 0 0 20px #ffcc00;
+            color: #ffcc00;
+        }
+        #portada p {
+            font-size: 1.4rem;
+            margin: 15px 0;
+            max-width: 700px;
+        }
+        #controles {
+            background: rgba(0,0,0,0.7);
+            padding: 20px 40px;
+            border-radius: 15px;
+            margin: 20px 0;
+            text-align: left;
+            font-size: 1.1rem;
+            line-height: 1.6;
+        }
+        #start-text {
+            margin-top: 30px;
+            font-size: 1.5rem;
+            color: #ffcc00;
+        }
+    </style>
+</head>
+<body>
+    <!-- PORTADA -->
+    <div id="portada">
+        <h1>CRUZADA MECÁNICA</h1>
+        <p>Versión VR - Meta Quest 3</p>
+        
+        <div id="controles">
+            <strong>Controles Quest 3:</strong><br>
+            • Thumbstick Izquierdo → Moverte (adelante, atrás, lados)<br>
+            • Thumbstick Derecho → Girar (Snap Turn)<br>
+            • Avance automático del mundo<br>
+            • Acércate a los cofres y objetos para recogerlos<br>
+            • Evita los obstáculos
+        </div>
+
+        <div id="start-text">
+            Pulsa el botón <strong>"Enter VR"</strong> para comenzar
+        </div>
+    </div>
+
+    <!-- UI en juego -->
+    <div id="ui" style="display: none; position: absolute; top: 10px; left: 10px; color: white; font-size: 18px; text-shadow: 0 0 5px black; z-index: 100;">
+        <div>⏱️ <span id="timer">01:30</span></div>
+        <div>❤️ <span id="vidas">3</span></div>
+        <div>⭐ <span id="pts">0</span></div>
+    </div>
+
+    <script type="importmap">
+    {
+        "imports": {
+            "three": "./build/three.module.js",
+            "three/addons/": "./examples/jsm/"
+        }
+    }
+    </script>
+
+    <script type="module">
+        import * as THREE from 'three';
+        import { VRButton } from 'three/addons/webxr/VRButton.js';
+        import { XRControllerModelFactory } from 'three/addons/webxr/XRControllerModelFactory.js';
+        import { FBXLoader } from 'three/addons/loaders/FBXLoader.js';
+        import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+        import { RGBELoader } from 'three/addons/loaders/RGBELoader.js';
+
+        let camera, scene, renderer, clock;
+        let dolly, playerGroup;
+        let mixer;
+        let listener, sound;
+        let vidas = 3, puntos = 0, timeLeft = 90, gameActive = false;
+
+        const lanes = [-150, 0, 150];
+        let obstacles = [], destructibles = [];
+
+        const portada = document.getElementById('portada');
+        const ui = document.getElementById('ui');
+
+        init();
+        animate();
+
+        function init() {
+            clock = new THREE.Clock();
+            scene = new THREE.Scene();
+
+            scene.add(new THREE.AmbientLight(0xffffff, 1.2));
+
+            new RGBELoader().load('examples/textures/equirectangular/fondoq.hdr', (texture) => {
+                texture.mapping = THREE.EquirectangularReflectionMapping;
+                scene.background = texture;
+                scene.environment = texture;
+            });
+
+            camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 20000);
+            dolly = new THREE.Group();
+            playerGroup = new THREE.Group();
+            dolly.add(playerGroup);
+            playerGroup.add(camera);
+            scene.add(dolly);
+
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setPixelRatio(window.devicePixelRatio);
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.xr.enabled = true;
+            document.body.appendChild(renderer.domElement);
+            document.body.appendChild(VRButton.createButton(renderer));
+
+            // Música
+            listener = new THREE.AudioListener();
+            camera.add(listener);
+            sound = new THREE.Audio(listener);
+            const audioLoader = new THREE.AudioLoader();
+            audioLoader.load('examples/sounds/mjuego.mp3', (buffer) => {
+                sound.setBuffer(buffer);
+                sound.setLoop(true);
+                sound.setVolume(0.65);
+            });
+
+            // Controllers
+            const controllerModelFactory = new XRControllerModelFactory();
+            for (let i = 0; i < 2; i++) {
+                const controller = renderer.xr.getController(i);
+                const grip = renderer.xr.getControllerGrip(i);
+                grip.add(controllerModelFactory.createControllerModel(grip));
+                dolly.add(controller);
+                dolly.add(grip);
+            }
+
+            // Cargar modelos y escena (mismo que antes)
+            const gltfLoader = new GLTFLoader();
+            const folders = ['rock_-_rock', 'weapon_rack_with_spears', 'medieval_chest', 'cinerary_urn_for_donata', 'wooden_barrel'];
+
+            const addEntity = (folder, laneIdx, z) => {
+                gltfLoader.load(`examples/models/gltf/${folder}/scene.gltf`, (gltf) => {
+                    const model = gltf.scene;
+                    let posY = 0, escala = 25;
+                    if(folder.includes('rock')) escala = 45;
+                    else if(folder.includes('chest')) { escala = 50; posY = 15; }
+                    else if(folder.includes('barrel')) { escala = 40; posY = 10; }
+                    
+                    model.position.set(lanes[laneIdx], posY, z);
+                    model.scale.set(escala, escala, escala);
+                    scene.add(model);
+
+                    if (folder.includes('rock') || folder.includes('rack')) obstacles.push(model);
+                    else destructibles.push({ mesh: model, points: folder.includes('chest') ? 10 : (folder.includes('urn') ? 5 : 2) });
+                });
+            };
+
+            for(let i = 1; i < 60; i++) {
+                addEntity(folders[Math.floor(Math.random()*5)], Math.floor(Math.random()*3), -i*800);
+            }
+
+            // Personaje
+            const fbxLoader = new FBXLoader();
+            fbxLoader.load('examples/models/fbx/Great Sword Idle.fbx', (object) => {
+                object.scale.set(0.8, 0.8, 0.8);
+                object.position.set(0, -30, 80);
+                playerGroup.add(object);
+                mixer = new THREE.AnimationMixer(object);
+            });
+
+            // Al entrar en VR
+            renderer.xr.addEventListener('sessionstart', () => {
+                portada.style.display = 'none';
+                ui.style.display = 'block';
+                gameActive = true;
+                if (sound && sound.buffer) sound.play();
+                startTimer();
+            });
+
+            window.addEventListener('resize', () => {
+                camera.aspect = window.innerWidth / window.innerHeight;
+                camera.updateProjectionMatrix();
+                renderer.setSize(window.innerWidth, window.innerHeight);
+            });
+        }
+
+        function startTimer() {
+            setInterval(() => {
+                if (!gameActive) return;
+                timeLeft--;
+                document.getElementById('timer').innerText = 
+                    `0${Math.floor(timeLeft/60)}:${(timeLeft%60).toString().padStart(2,'0')}`;
+                if (timeLeft <= 0) endGame("¡MISIÓN COMPLETADA!");
+            }, 1000);
+        }
+
+        function endGame(msg) {
+            gameActive = false;
+            if (sound) sound.stop();
+            alert(msg + "\nPuntaje Final: " + puntos);
+            setTimeout(() => location.reload(), 1500);
+        }
+
+        function handleMovement(delta) {
+            if (!renderer.xr.isPresenting()) return;
+            const session = renderer.xr.getSession();
+            session.inputSources.forEach((input) => {
+                if (input.gamepad) {
+                    const axes = input.gamepad.axes;
+                    if (Math.abs(axes[2]) > 0.2 || Math.abs(axes[3]) > 0.2) {
+                        dolly.translateX(axes[2] * 130 * delta);
+                        dolly.translateZ(axes[3] * 130 * delta);
+                    }
+                    if (Math.abs(axes[0]) > 0.7) {
+                        dolly.rotateY(-Math.sign(axes[0]) * 0.785); // giro 45°
+                    }
+                }
+            });
+        }
+
+        function checkCollectibles() {
+            for (let i = destructibles.length - 1; i >= 0; i--) {
+                const obj = destructibles[i];
+                if (obj.mesh && dolly.position.distanceTo(obj.mesh.position) < 150) {
+                    puntos += obj.points;
+                    document.getElementById('pts').innerText = puntos;
+                    obj.mesh.visible = false;
+                    destructibles.splice(i, 1);
+                }
+            }
+        }
+
+        function animate() {
+            renderer.setAnimationLoop(() => {
+                const delta = clock.getDelta();
+                if (mixer) mixer.update(delta);
+
+                if (gameActive) {
+                    handleMovement(delta);
+                    dolly.translateZ(-70 * delta); // avance automático
+                    checkCollectibles();
+                }
+
+                renderer.render(scene, camera);
+            });
+        }
+    </script>
+</body>
+</html>
