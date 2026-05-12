@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-    <title>Cruzada Mecánica VR - Debug</title>
+    <title>Cruzada Mecánica VR - Debug 2</title>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
     <style>
@@ -11,18 +11,18 @@
             display: flex; flex-direction: column; justify-content: center; align-items: center;
             color: white; background: rgba(0,0,0,0.95); z-index: 300; text-align: center;
         }
-        #ui { position: absolute; top: 10px; left: 10px; color: white; font-size: 20px; z-index: 100; text-shadow: 0 0 8px black; }
+        #ui { position: absolute; top: 10px; left: 10px; color: white; font-size: 22px; z-index: 100; text-shadow: 0 0 8px black; }
     </style>
 </head>
 <body>
     <div id="portada">
         <h1>CRUZADA MECÁNICA</h1>
-        <p>Versión Debug VR</p>
-        <p>Pulsa "Enter VR" para probar</p>
+        <p>Debug 2 - Prueba VR</p>
+        <p>Pulsa "Enter VR"</p>
     </div>
 
     <div id="loading" style="display:none;">
-        <h2>Cargando escena...</h2>
+        <h2>Cargando...</h2>
     </div>
 
     <div id="ui" style="display:none;">
@@ -46,7 +46,6 @@
 
         let scene, camera, renderer, dolly, clock;
         let gameActive = false;
-        let puntos = 0;
 
         const portada = document.getElementById('portada');
         const loading = document.getElementById('loading');
@@ -56,22 +55,20 @@
             clock = new THREE.Clock();
             scene = new THREE.Scene();
 
-            // === LUCES FUERTES (importante para no ver negro) ===
-            scene.add(new THREE.AmbientLight(0xffffff, 1.8));
-            const dirLight = new THREE.DirectionalLight(0xffffff, 1.5);
-            dirLight.position.set(5, 10, 7);
-            scene.add(dirLight);
+            // Luces fuertes
+            scene.add(new THREE.AmbientLight(0xffffff, 2.0));
+            const hemiLight = new THREE.HemisphereLight(0xaaaaee, 0x112233, 1.2);
+            scene.add(hemiLight);
 
-            // Fondo simple (más confiable que HDR en Quest)
-            scene.background = new THREE.Color(0x112233);
+            scene.background = new THREE.Color(0x88aaff);   // Azul cielo más claro
 
-            camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 2000);
+            camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 3000);
             dolly = new THREE.Group();
             dolly.add(camera);
             scene.add(dolly);
 
             renderer = new THREE.WebGLRenderer({ antialias: true });
-            renderer.setPixelRatio(1.5);           // bajo para Quest
+            renderer.setPixelRatio(1.6);
             renderer.setSize(window.innerWidth, window.innerHeight);
             renderer.xr.enabled = true;
             document.body.appendChild(renderer.domElement);
@@ -85,28 +82,38 @@
                 dolly.add(grip);
             }
 
-            // === OBJETOS DE PRUEBA (fáciles de ver) ===
             loading.style.display = 'flex';
 
-            const loader = new GLTFLoader();
-
-            // Suelo visible
+            // Suelo mejorado
             const floorGeo = new THREE.PlaneGeometry(2000, 2000);
-            const floorMat = new THREE.MeshBasicMaterial({ color: 0x334422 });
+            const floorMat = new THREE.MeshLambertMaterial({ color: 0x556633 });
             const floor = new THREE.Mesh(floorGeo, floorMat);
             floor.rotation.x = -Math.PI / 2;
             floor.position.y = -30;
             scene.add(floor);
 
-            // Cajas de prueba grandes y cercanas
-            for (let i = 0; i < 8; i++) {
+            // Cajas de prueba grandes y cercanas (más visibles)
+            const boxMat = new THREE.MeshLambertMaterial({ color: 0xff8800 });
+            for (let i = 0; i < 12; i++) {
+                const box = new THREE.Mesh(new THREE.BoxGeometry(80, 80, 80), boxMat);
+                box.position.set(
+                    (Math.random() - 0.5) * 400,
+                    40,
+                    -150 - i * 180
+                );
+                scene.add(box);
+            }
+
+            // Intentar cargar cofres reales
+            const loader = new GLTFLoader();
+            for (let i = 0; i < 6; i++) {
                 loader.load('examples/models/gltf/medieval_chest/scene.gltf', (gltf) => {
                     const model = gltf.scene;
-                    model.scale.set(60, 60, 60);
+                    model.scale.set(50, 50, 50);
                     model.position.set(
                         (Math.random() - 0.5) * 300,
                         0,
-                        -200 - i * 300
+                        -300 - i * 250
                     );
                     scene.add(model);
                 });
@@ -114,12 +121,11 @@
 
             loading.style.display = 'none';
 
-            // Entrar en VR
             renderer.xr.addEventListener('sessionstart', () => {
                 portada.style.display = 'none';
                 ui.style.display = 'block';
                 gameActive = true;
-                dolly.position.set(0, 0, 50);   // posición inicial
+                dolly.position.y = 20;   // altura de ojos
             });
 
             window.addEventListener('resize', () => {
@@ -133,7 +139,7 @@
             renderer.setAnimationLoop(() => {
                 const delta = clock.getDelta();
                 if (gameActive) {
-                    dolly.translateZ(-40 * delta);   // avance lento
+                    dolly.translateZ(-55 * delta);   // avance moderado
                 }
                 renderer.render(scene, camera);
             });
