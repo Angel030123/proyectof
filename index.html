@@ -1,38 +1,32 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-    <title>Cruzada Mecánica VR</title>
+    <title>Cruzada Mecánica VR - Debug</title>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
     <style>
-        body { margin: 0; overflow: hidden; background: #000; font-family: Arial, sans-serif; }
-        #portada, #loading { position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: flex; flex-direction: column; justify-content: center; align-items: center; color: white; background: rgba(0,0,0,0.95); z-index: 300; text-align: center; }
-        #loading { display: none; }
-        h1 { color: #ffcc00; text-shadow: 0 0 20px #ffcc00; }
+        body { margin: 0; overflow: hidden; background: #000; }
+        #portada, #loading {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            display: flex; flex-direction: column; justify-content: center; align-items: center;
+            color: white; background: rgba(0,0,0,0.95); z-index: 300; text-align: center;
+        }
+        #ui { position: absolute; top: 10px; left: 10px; color: white; font-size: 20px; z-index: 100; text-shadow: 0 0 8px black; }
     </style>
 </head>
 <body>
-    <!-- Portada -->
     <div id="portada">
         <h1>CRUZADA MECÁNICA</h1>
-        <p>Versión VR - Meta Quest 3</p>
-        <div style="background:rgba(0,0,0,0.7); padding:20px; border-radius:15px; margin:20px;">
-            <strong>Controles:</strong><br>
-            Thumbstick Izq: Mover<br>
-            Thumbstick Der: Girar<br>
-            Acércate a los objetos para recogerlos
-        </div>
-        <p>Pulsa "Enter VR" para comenzar</p>
+        <p>Versión Debug VR</p>
+        <p>Pulsa "Enter VR" para probar</p>
     </div>
 
-    <!-- Pantalla de carga -->
-    <div id="loading">
-        <h1>Cargando escena...</h1>
-        <p id="progress">0%</p>
+    <div id="loading" style="display:none;">
+        <h2>Cargando escena...</h2>
     </div>
 
-    <div id="ui" style="display:none; position:absolute; top:10px; left:10px; color:white; font-size:18px; z-index:100;">
-        ⏱️ <span id="timer">01:30</span> &nbsp;&nbsp; ❤️ <span id="vidas">3</span> &nbsp;&nbsp; ⭐ <span id="pts">0</span>
+    <div id="ui" style="display:none;">
+        ⭐ <span id="pts">0</span>
     </div>
 
     <script type="importmap">
@@ -50,42 +44,38 @@
         import { XRControllerModelFactory } from 'three/addons/webxr/XRControllerModelFactory.js';
         import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 
-        let camera, scene, renderer, clock, dolly;
-        let sound, listener;
+        let scene, camera, renderer, dolly, clock;
         let gameActive = false;
-        let puntos = 0, timeLeft = 90;
+        let puntos = 0;
 
         const portada = document.getElementById('portada');
-        const loadingScreen = document.getElementById('loading');
-        const progressText = document.getElementById('progress');
+        const loading = document.getElementById('loading');
         const ui = document.getElementById('ui');
 
         async function init() {
             clock = new THREE.Clock();
             scene = new THREE.Scene();
-            scene.add(new THREE.AmbientLight(0xffffff, 1.5));
 
-            camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 20000);
+            // === LUCES FUERTES (importante para no ver negro) ===
+            scene.add(new THREE.AmbientLight(0xffffff, 1.8));
+            const dirLight = new THREE.DirectionalLight(0xffffff, 1.5);
+            dirLight.position.set(5, 10, 7);
+            scene.add(dirLight);
+
+            // Fondo simple (más confiable que HDR en Quest)
+            scene.background = new THREE.Color(0x112233);
+
+            camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 2000);
             dolly = new THREE.Group();
             dolly.add(camera);
             scene.add(dolly);
 
-            renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
-            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2)); // importante para Quest
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setPixelRatio(1.5);           // bajo para Quest
             renderer.setSize(window.innerWidth, window.innerHeight);
             renderer.xr.enabled = true;
             document.body.appendChild(renderer.domElement);
             document.body.appendChild(VRButton.createButton(renderer));
-
-            // Música
-            listener = new THREE.AudioListener();
-            camera.add(listener);
-            sound = new THREE.Audio(listener);
-            new THREE.AudioLoader().load('examples/sounds/mjuego.mp3', (buffer) => {
-                sound.setBuffer(buffer);
-                sound.setLoop(true);
-                sound.setVolume(0.6);
-            });
 
             // Controllers
             const factory = new XRControllerModelFactory();
@@ -95,45 +85,41 @@
                 dolly.add(grip);
             }
 
-            // === Carga progresiva de modelos (más ligera) ===
-            loadingScreen.style.display = 'flex';
+            // === OBJETOS DE PRUEBA (fáciles de ver) ===
+            loading.style.display = 'flex';
+
             const loader = new GLTFLoader();
-            const folders = ['rock_-_rock', 'weapon_rack_with_spears', 'medieval_chest', 'cinerary_urn_for_donata', 'wooden_barrel'];
-            let loaded = 0;
-            const total = 30; // reducimos la cantidad inicial
 
-            for(let i = 1; i <= total; i++) {
-                const folder = folders[Math.floor(Math.random()*folders.length)];
-                await new Promise(resolve => {
-                    loader.load(`examples/models/gltf/${folder}/scene.gltf`, (gltf) => {
-                        const model = gltf.scene;
-                        let scale = 25;
-                        if(folder.includes('rock')) scale = 40;
-                        if(folder.includes('chest')) scale = 45;
+            // Suelo visible
+            const floorGeo = new THREE.PlaneGeometry(2000, 2000);
+            const floorMat = new THREE.MeshBasicMaterial({ color: 0x334422 });
+            const floor = new THREE.Mesh(floorGeo, floorMat);
+            floor.rotation.x = -Math.PI / 2;
+            floor.position.y = -30;
+            scene.add(floor);
 
-                        model.scale.set(scale, scale, scale);
-                        model.position.set(
-                            [-150, 0, 150][Math.floor(Math.random()*3)], 
-                            0, 
-                            -i * 600
-                        );
-                        scene.add(model);
-                        loaded++;
-                        progressText.textContent = Math.round((loaded / total) * 100) + "%";
-                        resolve();
-                    });
+            // Cajas de prueba grandes y cercanas
+            for (let i = 0; i < 8; i++) {
+                loader.load('examples/models/gltf/medieval_chest/scene.gltf', (gltf) => {
+                    const model = gltf.scene;
+                    model.scale.set(60, 60, 60);
+                    model.position.set(
+                        (Math.random() - 0.5) * 300,
+                        0,
+                        -200 - i * 300
+                    );
+                    scene.add(model);
                 });
             }
 
-            loadingScreen.style.display = 'none';
+            loading.style.display = 'none';
 
             // Entrar en VR
             renderer.xr.addEventListener('sessionstart', () => {
                 portada.style.display = 'none';
                 ui.style.display = 'block';
                 gameActive = true;
-                if (sound && sound.buffer) sound.play();
-                startTimer();
+                dolly.position.set(0, 0, 50);   // posición inicial
             });
 
             window.addEventListener('resize', () => {
@@ -143,26 +129,11 @@
             });
         }
 
-        function startTimer() {
-            setInterval(() => {
-                if (!gameActive) return;
-                timeLeft--;
-                document.getElementById('timer').innerText = `0${Math.floor(timeLeft/60)}:${(timeLeft%60).toString().padStart(2,'0')}`;
-                if (timeLeft <= 0) endGame("¡MISIÓN COMPLETADA!");
-            }, 1000);
-        }
-
-        function endGame(msg) {
-            gameActive = false;
-            if (sound) sound.stop();
-            alert(msg + "\nPuntaje: " + puntos);
-        }
-
         function animate() {
             renderer.setAnimationLoop(() => {
                 const delta = clock.getDelta();
                 if (gameActive) {
-                    dolly.translateZ(-60 * delta); // avance más suave
+                    dolly.translateZ(-40 * delta);   // avance lento
                 }
                 renderer.render(scene, camera);
             });
