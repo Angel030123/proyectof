@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-    <title>Cruzada Mecánica VR - Debug 2</title>
+    <title>Cruzada Mecánica VR</title>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
     <style>
@@ -11,22 +11,22 @@
             display: flex; flex-direction: column; justify-content: center; align-items: center;
             color: white; background: rgba(0,0,0,0.95); z-index: 300; text-align: center;
         }
-        #ui { position: absolute; top: 10px; left: 10px; color: white; font-size: 22px; z-index: 100; text-shadow: 0 0 8px black; }
+        #ui { position: absolute; top: 10px; left: 10px; color: white; font-size: 20px; z-index: 100; text-shadow: 0 0 8px black; }
     </style>
 </head>
 <body>
     <div id="portada">
         <h1>CRUZADA MECÁNICA</h1>
-        <p>Debug 2 - Prueba VR</p>
-        <p>Pulsa "Enter VR"</p>
+        <p>VR - Meta Quest 3</p>
+        <p>Pulsa "Enter VR" para jugar</p>
     </div>
 
     <div id="loading" style="display:none;">
-        <h2>Cargando...</h2>
+        <h2>Cargando tu juego...</h2>
     </div>
 
     <div id="ui" style="display:none;">
-        ⭐ <span id="pts">0</span>
+        ⏱️ <span id="timer">01:30</span> &nbsp; ❤️ <span id="vidas">3</span> &nbsp; ⭐ <span id="pts">0</span>
     </div>
 
     <script type="importmap">
@@ -46,6 +46,7 @@
 
         let scene, camera, renderer, dolly, clock;
         let gameActive = false;
+        let puntos = 0, timeLeft = 90;
 
         const portada = document.getElementById('portada');
         const loading = document.getElementById('loading');
@@ -55,20 +56,21 @@
             clock = new THREE.Clock();
             scene = new THREE.Scene();
 
-            // Luces fuertes
-            scene.add(new THREE.AmbientLight(0xffffff, 2.0));
-            const hemiLight = new THREE.HemisphereLight(0xaaaaee, 0x112233, 1.2);
-            scene.add(hemiLight);
+            // === LUCES FUERTES PARA QUE SE VEAN TUS MODELOS ===
+            scene.add(new THREE.AmbientLight(0xffffff, 2.2));
+            const dirLight = new THREE.DirectionalLight(0xffffff, 1.8);
+            dirLight.position.set(10, 30, 20);
+            scene.add(dirLight);
 
-            scene.background = new THREE.Color(0x88aaff);   // Azul cielo más claro
+            scene.background = new THREE.Color(0x88aaff);
 
-            camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 3000);
+            camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 5000);
             dolly = new THREE.Group();
             dolly.add(camera);
             scene.add(dolly);
 
             renderer = new THREE.WebGLRenderer({ antialias: true });
-            renderer.setPixelRatio(1.6);
+            renderer.setPixelRatio(1.5);
             renderer.setSize(window.innerWidth, window.innerHeight);
             renderer.xr.enabled = true;
             document.body.appendChild(renderer.domElement);
@@ -84,48 +86,51 @@
 
             loading.style.display = 'flex';
 
-            // Suelo mejorado
-            const floorGeo = new THREE.PlaneGeometry(2000, 2000);
-            const floorMat = new THREE.MeshLambertMaterial({ color: 0x556633 });
-            const floor = new THREE.Mesh(floorGeo, floorMat);
-            floor.rotation.x = -Math.PI / 2;
-            floor.position.y = -30;
-            scene.add(floor);
-
-            // Cajas de prueba grandes y cercanas (más visibles)
-            const boxMat = new THREE.MeshLambertMaterial({ color: 0xff8800 });
-            for (let i = 0; i < 12; i++) {
-                const box = new THREE.Mesh(new THREE.BoxGeometry(80, 80, 80), boxMat);
-                box.position.set(
-                    (Math.random() - 0.5) * 400,
-                    40,
-                    -150 - i * 180
-                );
-                scene.add(box);
-            }
-
-            // Intentar cargar cofres reales
             const loader = new GLTFLoader();
-            for (let i = 0; i < 6; i++) {
-                loader.load('examples/models/gltf/medieval_chest/scene.gltf', (gltf) => {
+            const folders = ['rock_-_rock', 'weapon_rack_with_spears', 'medieval_chest', 'cinerary_urn_for_donata', 'wooden_barrel'];
+            let loadedCount = 0;
+
+            // Cargar menos modelos pero mejor posicionados
+            for(let i = 1; i <= 25; i++) {
+                const folder = folders[Math.floor(Math.random() * folders.length)];
+                loader.load(`examples/models/gltf/${folder}/scene.gltf`, (gltf) => {
                     const model = gltf.scene;
-                    model.scale.set(50, 50, 50);
+                    let scale = 28;
+                    let y = 0;
+
+                    if (folder.includes('rock')) scale = 45;
+                    if (folder.includes('chest')) { scale = 55; y = 10; }
+                    if (folder.includes('barrel')) scale = 40;
+
+                    model.scale.set(scale, scale, scale);
                     model.position.set(
-                        (Math.random() - 0.5) * 300,
-                        0,
-                        -300 - i * 250
+                        [-160, 0, 160][Math.floor(Math.random()*3)],
+                        y,
+                        -200 - i * 450
                     );
                     scene.add(model);
+                    loadedCount++;
                 });
             }
 
+            // Suelo
+            const floor = new THREE.Mesh(
+                new THREE.PlaneGeometry(800, 5000),
+                new THREE.MeshLambertMaterial({ color: 0x3a2f1f })
+            );
+            floor.rotation.x = -Math.PI / 2;
+            floor.position.y = -35;
+            scene.add(floor);
+
             loading.style.display = 'none';
 
+            // Iniciar VR
             renderer.xr.addEventListener('sessionstart', () => {
                 portada.style.display = 'none';
                 ui.style.display = 'block';
                 gameActive = true;
-                dolly.position.y = 20;   // altura de ojos
+                dolly.position.set(0, 20, 30); // Altura ojos + posición inicial
+                startTimer();
             });
 
             window.addEventListener('resize', () => {
@@ -135,11 +140,25 @@
             });
         }
 
+        function startTimer() {
+            setInterval(() => {
+                if (!gameActive) return;
+                timeLeft--;
+                document.getElementById('timer').innerText = `0${Math.floor(timeLeft/60)}:${(timeLeft%60).toString().padStart(2,'0')}`;
+                if (timeLeft <= 0) endGame("¡MISIÓN COMPLETADA!");
+            }, 1000);
+        }
+
+        function endGame(msg) {
+            gameActive = false;
+            alert(msg + "\nPuntaje: " + puntos);
+        }
+
         function animate() {
             renderer.setAnimationLoop(() => {
                 const delta = clock.getDelta();
                 if (gameActive) {
-                    dolly.translateZ(-55 * delta);   // avance moderado
+                    dolly.translateZ(-65 * delta); // velocidad del runner
                 }
                 renderer.render(scene, camera);
             });
